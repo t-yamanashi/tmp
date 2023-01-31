@@ -1,0 +1,505 @@
+# Explorer
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.5"},
+  {:kino, "~> 0.8"},
+  {:download, "~> 0.0.4"}
+])
+```
+
+## エイリアス
+
+```elixir
+alias Explorer.DataFrame
+alias Explorer.Series
+require Explorer.DataFrame
+```
+
+```elixir
+File.rm("population_20211001.csv")
+File.rm("assets_20151216.csv")
+
+Download.from(
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/explorer/population_20211001.csv"
+)
+
+Download.from(
+  "https://raw.githubusercontent.com/RyoWakabayashi/elixir-learning/main/livebooks/explorer/assets_20151216.csv"
+)
+
+File.ls()
+```
+
+## データフレーム作成
+
+```elixir
+sample_df =
+  %{
+    "labels" => ["a", "b", "c", "c", "c"],
+    "values" => [1, 2, 3, 2, 1]
+  }
+  |> DataFrame.new()
+```
+
+```elixir
+Kino.DataTable.new(sample_df)
+```
+
+```elixir
+sample_df
+|> DataFrame.describe()
+|> Kino.DataTable.new()
+```
+
+## 計算
+
+### 四則演算、累乗
+
+```elixir
+sample_df
+|> DataFrame.mutate(
+  add: values + 2,
+  subtract: values - 2,
+  multiply: values * 2,
+  divide: values / 2,
+  pow: values ** 2
+)
+|> Kino.DataTable.new()
+```
+
+### 商、余り
+
+```elixir
+sample_df
+|> DataFrame.mutate(
+  quotient: quotient(values, 2),
+  remainder: remainder(values, 2)
+)
+|> Kino.DataTable.new()
+```
+
+### 比較
+
+```elixir
+sample_df
+|> DataFrame.mutate(
+  equal: values == 2,
+  not_equal: values != 2,
+  greater: values > 2,
+  greater_equal: values >= 2,
+  less: values < 2,
+  less_equal: values <= 2
+)
+|> Kino.DataTable.new()
+```
+
+### 論理演算
+
+```elixir
+sample_df
+|> DataFrame.mutate(
+  "not equal": Series.not(values == 2),
+  "greater or equal": Series.or(values > 2, values == 2),
+  "greater and equal": Series.and(values > 2, values == 2)
+)
+|> Kino.DataTable.new()
+```
+
+```elixir
+Series.all_equal(sample_df["labels"], sample_df["labels"])
+```
+
+```elixir
+Series.all_equal(sample_df["labels"], sample_df["values"])
+```
+
+### フィルター
+
+```elixir
+threshold = 1
+
+sample_df
+|> DataFrame.filter(values > ^threshold)
+|> Kino.DataTable.new()
+```
+
+### 欠損値
+
+```elixir
+nil_df =
+  %{
+    "labels" => ["a", nil, "c", "c", "c"],
+    "values" => [1, 2, 3, nil, 1]
+  }
+  |> DataFrame.new()
+
+Kino.DataTable.new(nil_df)
+```
+
+```elixir
+nil_df
+|> DataFrame.mutate(
+  is_nil: is_nil(values),
+  is_not_nil: is_not_nil(values)
+)
+|> Kino.DataTable.new()
+```
+
+```elixir
+fill_label =
+  ""
+  |> List.duplicate(5)
+  |> Series.from_list()
+```
+
+```elixir
+fill_value =
+  0
+  |> List.duplicate(5)
+  |> Series.from_list()
+```
+
+```elixir
+nil_df
+|> DataFrame.mutate(
+  labels_filled: coalesce(labels, ^fill_label),
+  values_filled: coalesce(values, ^fill_value)
+)
+|> Kino.DataTable.new()
+```
+
+### 集計
+
+```elixir
+sample_df
+|> DataFrame.group_by("labels")
+|> DataFrame.summarise(
+  count: count(values),
+  n_distinct: n_distinct(values),
+  min: min(values),
+  max: max(values),
+  sum: sum(values),
+  mean: mean(values),
+  median: median(values),
+  "quantile 1/4": quantile(values, 0.25),
+  "quantile 3/4": quantile(values, 0.75),
+  variance: variance(values),
+  standard_deviation: standard_deviation(values)
+)
+|> Kino.DataTable.new()
+```
+
+```elixir
+sample_df["values"]
+|> Series.frequencies()
+|> Kino.DataTable.new()
+```
+
+### 並べ替え
+
+```elixir
+sample_df
+|> DataFrame.arrange(asc: values)
+|> Kino.DataTable.new()
+```
+
+## CSV 読み込み
+
+```elixir
+population_df =
+  "population_20211001.csv"
+  |> DataFrame.from_csv!()
+  |> DataFrame.rename("人口（千人）": "人口_千人")
+```
+
+## テーブル表示
+
+```elixir
+DataFrame.table(population_df)
+```
+
+```elixir
+DataFrame.table(population_df, limit: :infinity)
+```
+
+```elixir
+Kino.DataTable.new(population_df)
+```
+
+```elixir
+population_df
+|> DataFrame.mutate(人口_千人: cast(人口_千人, :integer))
+|> DataFrame.describe()
+|> Kino.DataTable.new()
+```
+
+## データ分析
+
+```elixir
+population_df
+|> DataFrame.distinct(["年齢層"])
+|> DataFrame.pull("年齢層")
+|> Series.to_list()
+```
+
+```elixir
+population_df
+|> DataFrame.mutate(人口_千人: cast(人口_千人, :float))
+|> DataFrame.filter(都道府県 == "東京都")
+|> DataFrame.select(["年齢層", "性別", "人口_千人"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+trimmed =
+  population_df["人口_千人"]
+  |> Series.transform(fn input ->
+    String.replace(input, ",", "")
+  end)
+  |> Series.cast(:float)
+```
+
+```elixir
+population_df = DataFrame.put(population_df, "人口_千人", trimmed)
+```
+
+```elixir
+population_df
+|> DataFrame.filter(都道府県 == "東京都")
+|> DataFrame.select(["年齢層", "性別", "人口_千人"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+population_df =
+  population_df
+  |> DataFrame.mutate(人口_千人: 人口_千人 * 1000)
+  |> DataFrame.mutate(人口_千人: cast(人口_千人, :integer))
+  |> DataFrame.rename(人口_千人: "人口")
+
+population_df
+|> DataFrame.filter(都道府県 == "東京都")
+|> DataFrame.select(["年齢層", "性別", "人口"])
+|> Kino.DataTable.new()
+```
+
+```elixir
+population_df
+|> DataFrame.filter(年齢層 == "15歳未満")
+|> DataFrame.filter(性別 == "男性")
+|> DataFrame.filter(人口 > 300_000)
+|> DataFrame.select(["都道府県", "人口"])
+|> DataFrame.arrange(desc: 人口)
+|> Kino.DataTable.new()
+```
+
+```elixir
+population_df
+|> DataFrame.pivot_wider("年齢層", "人口")
+|> Kino.DataTable.new()
+```
+
+```elixir
+sum_df =
+  population_df
+  |> DataFrame.group_by(["都道府県"])
+  |> DataFrame.summarise(人口_千人: sum(人口 / 1_000))
+  |> DataFrame.mutate(人口_千人: cast(人口_千人, :float))
+
+sum_df
+|> DataFrame.arrange(desc: 人口_千人)
+|> Kino.DataTable.new()
+```
+
+```elixir
+sex_ratio_df =
+  population_df
+  |> DataFrame.group_by(["都道府県", "性別"])
+  |> DataFrame.summarise(人口: sum(人口))
+  |> DataFrame.mutate(人口: cast(人口, :float))
+  |> DataFrame.pivot_wider("性別", "人口")
+  |> DataFrame.mutate(合計: 男性 + 女性)
+  |> DataFrame.mutate(男性率: 男性 / 合計)
+  |> DataFrame.mutate(女性率: 女性 / 合計)
+  |> DataFrame.select(["都道府県", "男性率", "女性率"])
+
+sex_ratio_df
+|> DataFrame.arrange(desc: 男性率)
+|> Kino.DataTable.new()
+```
+
+```elixir
+elderly_rate_df =
+  population_df
+  |> DataFrame.group_by(["都道府県", "年齢層"])
+  |> DataFrame.summarise(人口: sum(人口))
+  |> DataFrame.mutate(人口: cast(人口, :float))
+  |> DataFrame.pivot_wider("年齢層", "人口")
+  |> DataFrame.rename("15歳未満": "young")
+  |> DataFrame.rename("15～64歳": "middle")
+  |> DataFrame.rename("65歳以上": "elder")
+  |> DataFrame.mutate(合計: young + middle + elder)
+  |> DataFrame.mutate(高齢者率: elder / 合計)
+  |> DataFrame.select(["都道府県", "高齢者率"])
+
+elderly_rate_df
+|> DataFrame.arrange(desc: 高齢者率)
+|> Kino.DataTable.new(sorting_enabled: true)
+```
+
+```elixir
+assets_df = DataFrame.from_csv!("assets_20151216.csv")
+
+Kino.DataTable.new(assets_df)
+```
+
+```elixir
+parse_float = fn df, col ->
+  df
+  |> DataFrame.put(
+    col,
+    df[col]
+    |> Series.transform(fn input ->
+      String.replace(input, ",", "")
+    end)
+    |> Series.cast(:float)
+  )
+end
+
+assets_df =
+  assets_df
+  |> parse_float.("年間収入")
+  |> parse_float.("貯蓄現在高")
+  |> parse_float.("負債現在高")
+
+Kino.DataTable.new(assets_df)
+```
+
+```elixir
+joined_df =
+  sum_df
+  |> DataFrame.join(sex_ratio_df, how: :left)
+  |> DataFrame.join(elderly_rate_df, how: :left)
+  |> DataFrame.join(assets_df, how: :left)
+
+Kino.DataTable.new(joined_df)
+```
+
+```elixir
+DataFrame.to_csv(joined_df, "/tmp/joined.csv")
+```
+
+```elixir
+cols =
+  joined_df
+  |> DataFrame.names()
+  |> Enum.filter(&(&1 != "都道府県"))
+```
+
+```elixir
+std_map =
+  joined_df
+  |> DataFrame.select(cols)
+  |> DataFrame.to_series()
+  |> Enum.map(fn {key, value} -> {key, Series.standard_deviation(value)} end)
+  |> Enum.into(%{})
+```
+
+```elixir
+get_mul = fn df, col_1, col_2 ->
+  DataFrame.put(
+    df,
+    "#{col_1}*#{col_2}",
+    Series.multiply(df[col_1], df[col_2])
+  )
+end
+
+covariance_df =
+  cols
+  |> Enum.reduce(joined_df, fn col_1, sub_df_1 ->
+    cols
+    |> Enum.reduce(sub_df_1, fn col_2, sub_df_2 ->
+      get_mul.(sub_df_2, col_1, col_2)
+    end)
+  end)
+```
+
+```elixir
+select_cols =
+  covariance_df
+  |> DataFrame.names()
+  |> Enum.filter(&(&1 != "都道府県"))
+
+mean_map =
+  covariance_df
+  |> DataFrame.select(select_cols)
+  |> DataFrame.to_series()
+  |> Enum.map(fn {key, value} -> {key, Series.mean(value)} end)
+  |> Enum.into(%{})
+```
+
+```elixir
+get_covariance = fn col_1, col_2 ->
+  Map.get(mean_map, col_1 <> "*" <> col_2) - Map.get(mean_map, col_1) * Map.get(mean_map, col_2)
+end
+
+covariance_map =
+  cols
+  |> Enum.map(fn col_1 ->
+    cols
+    |> Enum.map(fn col_2 ->
+      {col_1 <> "*" <> col_2, get_covariance.(col_1, col_2)}
+    end)
+    |> Enum.into(%{})
+  end)
+  |> Enum.reduce(fn map, merged_map ->
+    Map.merge(merged_map, map)
+  end)
+```
+
+```elixir
+get_correlation = fn col_1, col_2 ->
+  cond do
+    col_1 == col_2 ->
+      1
+
+    true ->
+      Map.get(covariance_map, col_1 <> "*" <> col_2) /
+        (Map.get(std_map, col_1) * Map.get(std_map, col_2))
+  end
+end
+
+correlation_map =
+  cols
+  |> Enum.map(fn col_1 ->
+    cols
+    |> Enum.map(fn col_2 ->
+      {col_1 <> "*" <> col_2, get_correlation.(col_1, col_2)}
+    end)
+    |> Enum.into(%{})
+  end)
+  |> Enum.reduce(fn map, merged_map ->
+    Map.merge(merged_map, map)
+  end)
+```
+
+```elixir
+cols
+|> Enum.map(fn col_1 ->
+  %{
+    col_1 =>
+      cols
+      |> Enum.map(fn col_2 ->
+        Map.get(correlation_map, col_1 <> "*" <> col_2)
+      end)
+  }
+end)
+|> Enum.reduce(fn map, merged_map ->
+  Map.merge(merged_map, map)
+end)
+|> Map.merge(%{"x" => cols})
+|> DataFrame.new()
+|> DataFrame.select(["x" | cols])
+|> Kino.DataTable.new(keys: ["x" | cols], sorting_enabled: true)
+```
